@@ -23,7 +23,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.js",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test": "npm run build && node --test dist/test/qpdfHelpers.test.js"
   },
   "n8n": {
     "n8nNodesApiVersion": 1,
