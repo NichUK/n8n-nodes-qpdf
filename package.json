@@ -1,0 +1,42 @@
+{
+  "name": "n8n-nodes-qpdf",
+  "version": "0.1.0",
+  "description": "n8n community node wrapper for qpdf",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "qpdf",
+    "pdf"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nichuk/n8n-nodes-qpdf",
+  "author": {
+    "name": "Nich Overend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nichuk/n8n-nodes-qpdf.git"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.js",
+    "clean": "rimraf dist"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "nodes": [
+      "dist/nodes/Qpdf/Qpdf.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}
