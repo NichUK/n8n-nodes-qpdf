@@ -80,3 +80,11 @@ export function resolveRawArgumentTokens(
 		}),
 	);
 }
+
+export function normalizePageSpec(pageSpec: string): string {
+	return pageSpec
+		.trim()
+		.replace(/\s*-\s*/g, '-')
+		.replace(/\s*,\s*/g, ',')
+		.replace(/\s+/g, ' ');
+}

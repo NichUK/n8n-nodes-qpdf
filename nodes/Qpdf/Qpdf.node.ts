@@ -13,7 +13,7 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import { resolveRawArgumentTokens, sanitizeFileName } from './qpdfHelpers';
+import { normalizePageSpec, resolveRawArgumentTokens, sanitizeFileName } from './qpdfHelpers';
 
 type QpdfOperation = 'extractPages' | 'merge' | 'rotatePages' | 'rawArguments';
 
@@ -277,11 +277,15 @@ export class Qpdf implements INodeType {
 
 					if (operation === 'extractPages') {
 						autoSuffix = 'extracted';
-						const pages = this.getNodeParameter('pages', itemIndex) as string;
+						const pages = normalizePageSpec(
+							this.getNodeParameter('pages', itemIndex) as string,
+						);
 						await runQpdf([inputPath, '--pages', inputPath, pages, '--', outputPath]);
 					} else {
 						autoSuffix = 'rotated';
-						const pages = this.getNodeParameter('pages', itemIndex) as string;
+						const pages = normalizePageSpec(
+							this.getNodeParameter('pages', itemIndex) as string,
+						);
 						const rotation = this.getNodeParameter('rotation', itemIndex) as string;
 						await runQpdf([inputPath, '--rotate', `${rotation}:${pages}`, '--', outputPath]);
 					}

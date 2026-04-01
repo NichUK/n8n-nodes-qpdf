@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+	normalizePageSpec,
 	resolveRawArgumentTokens,
 	sanitizeFileName,
 	tokenizeArguments,
@@ -48,4 +49,9 @@ test('resolveRawArgumentTokens rejects unknown placeholders', () => {
 
 test('sanitizeFileName strips invalid path characters', () => {
 	assert.equal(sanitizeFileName('folder\\my:file?.pdf', 'fallback.pdf'), 'my_file_.pdf');
+});
+
+test('normalizePageSpec removes spaces around range separators', () => {
+	assert.equal(normalizePageSpec('1 - 2'), '1-2');
+	assert.equal(normalizePageSpec('1, 3 - 5, 7 - z'), '1,3-5,7-z');
 });
