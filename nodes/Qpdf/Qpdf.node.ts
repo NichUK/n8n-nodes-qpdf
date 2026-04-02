@@ -14,6 +14,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import {
+	isQpdfWarningOnlyMessage,
 	normalizePageSpec,
 	parseMetadataInput,
 	resolveRawArgumentTokens,
@@ -64,7 +65,7 @@ async function runQpdf(commandArgs: string[]): Promise<ProcessResult> {
 		});
 
 		child.on('close', (code) => {
-			if (code === 0) {
+			if (code === 0 || isQpdfWarningOnlyMessage(stderr)) {
 				resolve({ stdout, stderr });
 				return;
 			}
@@ -319,12 +320,13 @@ export class Qpdf implements INodeType {
 			const outputFileNameParam = this.getNodeParameter('outputFileName', itemIndex) as string;
 
 			const workDir = await mkdtemp(join(tmpdir(), 'n8n-qpdf-'));
+			let outputPath = '';
+			let sourceName = 'document.pdf';
+			let autoSuffix = 'output';
 
 			try {
 				let outputBuffer: Buffer;
 				let processWarnings = '';
-				let sourceName = 'document.pdf';
-				let autoSuffix = 'output';
 
 				if (operation === 'merge' || operation === 'rawArguments') {
 					const fieldsRaw = this.getNodeParameter('inputBinaryFields', itemIndex) as string;
@@ -365,7 +367,7 @@ export class Qpdf implements INodeType {
 						placeholderMap.set(fieldName, inputPath);
 					}
 
-					const outputPath = join(workDir, 'output.pdf');
+					outputPath = join(workDir, 'output.pdf');
 					placeholderMap.set('output', outputPath);
 
 					if (operation === 'merge') {
@@ -388,7 +390,7 @@ export class Qpdf implements INodeType {
 					sourceName = sanitizeFileName(binaryData.fileName, 'document.pdf');
 
 					const inputPath = join(workDir, 'input.pdf');
-					const outputPath = join(workDir, 'output.pdf');
+					outputPath = join(workDir, 'output.pdf');
 					await writeFile(inputPath, inputBuffer);
 
 					if (operation === 'extractPages') {
@@ -439,21 +441,48 @@ export class Qpdf implements INodeType {
 					pairedItem: { item: itemIndex },
 				});
 			} catch (error) {
+				const message = error instanceof Error ? error.message : 'Unknown error';
+
+				if (outputPath && isQpdfWarningOnlyMessage(message)) {
+					try {
+						const outputBuffer = await readFile(outputPath);
+						const baseName = sourceName.replace(/\.pdf$/i, '');
+						const autoFileName = `${baseName}-${autoSuffix}.pdf`;
+						const outputFileName = sanitizeFileName(outputFileNameParam, autoFileName);
+						const preparedBinary = await this.helpers.prepareBinaryData(
+							outputBuffer,
+							outputFileName,
+							'application/pdf',
+						);
+
+						returnData.push({
+							json: {
+								operation,
+								warnings: message,
+								recoveredFromWarning: true,
+							} as IDataObject,
+							binary: {
+								[outputBinaryField]: preparedBinary,
+							},
+							pairedItem: { item: itemIndex },
+						});
+						continue;
+					} catch {
+						// Fall through to the standard error path if recovery is not possible.
+					}
+				}
+
 				if (this.continueOnFail()) {
 					returnData.push({
 						json: {
-							error: error instanceof Error ? error.message : 'Unknown error',
+							error: message,
 						},
 						pairedItem: { item: itemIndex },
 					});
 					continue;
 				}
 
-				throw new NodeOperationError(
-					this.getNode(),
-					error instanceof Error ? error.message : 'Unknown error',
-					{ itemIndex },
-				);
+				throw new NodeOperationError(this.getNode(), message, { itemIndex });
 			} finally {
 				await rm(workDir, { recursive: true, force: true });
 			}

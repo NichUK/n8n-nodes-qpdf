@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+	isQpdfWarningOnlyMessage,
 	normalizePageSpec,
 	parseMetadataInput,
 	resolveRawArgumentTokens,
@@ -66,6 +67,16 @@ test('sanitizeFileName strips invalid path characters', () => {
 test('normalizePageSpec removes spaces around range separators', () => {
 	assert.equal(normalizePageSpec('1 - 2'), '1-2');
 	assert.equal(normalizePageSpec('1, 3 - 5, 7 - z'), '1,3-5,7-z');
+});
+
+test('isQpdfWarningOnlyMessage detects qpdf warning-only output', () => {
+	assert.equal(
+		isQpdfWarningOnlyMessage(
+			'WARNING: sample\nqpdf: operation succeeded with warnings; resulting file may have some problems',
+		),
+		true,
+	);
+	assert.equal(isQpdfWarningOnlyMessage('qpdf exited with code 2'), false);
 });
 
 test('parseMetadataInput accepts pdf metadata only', () => {

@@ -94,6 +94,10 @@ export function normalizePageSpec(pageSpec: string): string {
 		.replace(/\s+/g, ' ');
 }
 
+export function isQpdfWarningOnlyMessage(message: string): boolean {
+	return message.includes('qpdf: operation succeeded with warnings');
+}
+
 export function parseMetadataInput(metadataJson: string): QpdfMetadataInput {
 	let parsed: unknown;
 
