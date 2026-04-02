@@ -27,9 +27,15 @@ type QpdfOperation =
 	| 'rawArguments'
 	| 'setMetadata';
 
-async function runQpdf(commandArgs: string[]): Promise<void> {
-	await new Promise<void>((resolve, reject) => {
-		const child = spawn('qpdf', commandArgs, {
+interface ProcessResult {
+	stdout: string;
+	stderr: string;
+}
+
+async function runQpdf(commandArgs: string[]): Promise<ProcessResult> {
+	return await new Promise<ProcessResult>((resolve, reject) => {
+		const effectiveArgs = ['--warning-exit-0', ...commandArgs];
+		const child = spawn('qpdf', effectiveArgs, {
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 
@@ -59,7 +65,7 @@ async function runQpdf(commandArgs: string[]): Promise<void> {
 
 		child.on('close', (code) => {
 			if (code === 0) {
-				resolve();
+				resolve({ stdout, stderr });
 				return;
 			}
 
@@ -316,6 +322,7 @@ export class Qpdf implements INodeType {
 
 			try {
 				let outputBuffer: Buffer;
+				let processWarnings = '';
 				let sourceName = 'document.pdf';
 				let autoSuffix = 'output';
 
@@ -363,12 +370,14 @@ export class Qpdf implements INodeType {
 
 					if (operation === 'merge') {
 						autoSuffix = 'merged';
-						await runQpdf(['--empty', '--pages', ...inputPaths, '--', outputPath]);
+						const result = await runQpdf(['--empty', '--pages', ...inputPaths, '--', outputPath]);
+						processWarnings = result.stderr.trim();
 					} else {
 						autoSuffix = 'custom';
 						const rawArguments = this.getNodeParameter('rawArguments', itemIndex) as string;
 						const resolvedArgs = resolveRawArgumentTokens(rawArguments, placeholderMap);
-						await runQpdf(resolvedArgs);
+						const result = await runQpdf(resolvedArgs);
+						processWarnings = result.stderr.trim();
 					}
 
 					outputBuffer = await readFile(outputPath);
@@ -387,14 +396,16 @@ export class Qpdf implements INodeType {
 						const pages = normalizePageSpec(
 							this.getNodeParameter('pages', itemIndex) as string,
 						);
-						await runQpdf([inputPath, '--pages', inputPath, pages, '--', outputPath]);
+						const result = await runQpdf([inputPath, '--pages', inputPath, pages, '--', outputPath]);
+						processWarnings = result.stderr.trim();
 					} else if (operation === 'rotatePages') {
 						autoSuffix = 'rotated';
 						const pages = normalizePageSpec(
 							this.getNodeParameter('pages', itemIndex) as string,
 						);
 						const rotation = this.getNodeParameter('rotation', itemIndex) as string;
-						await runQpdf([inputPath, '--rotate', `${rotation}:${pages}`, '--', outputPath]);
+						const result = await runQpdf([inputPath, '--rotate', `${rotation}:${pages}`, '--', outputPath]);
+						processWarnings = result.stderr.trim();
 					} else {
 						autoSuffix = 'metadata';
 						const metadataJson = this.getNodeParameter('metadataJson', itemIndex) as string;
@@ -418,7 +429,10 @@ export class Qpdf implements INodeType {
 				);
 
 				returnData.push({
-					json: { operation } as IDataObject,
+					json: {
+						operation,
+						...(processWarnings ? { warnings: processWarnings } : {}),
+					} as IDataObject,
 					binary: {
 						[outputBinaryField]: preparedBinary,
 					},

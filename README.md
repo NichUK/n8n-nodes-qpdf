@@ -2,6 +2,8 @@
 
 `n8n-nodes-qpdf` is a community node that wraps `qpdf` for common PDF transformations and adds a metadata-writing mode for PDF document info and XMP.
 
+By default, `qpdf` warnings are treated as non-fatal. The node keeps the workflow moving and exposes warning text in the node JSON output instead of failing the execution.
+
 ## Requirements
 
 - `qpdf` must be installed in the environment where n8n runs.
