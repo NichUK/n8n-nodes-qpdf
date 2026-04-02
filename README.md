@@ -66,10 +66,10 @@ Linearize a PDF:
 --linearize {{data}} {{output}}
 ```
 
-Decrypt with a supplied password:
+Decrypt using a password stored in a binary field (qpdf reads the password from a file via `--password-file`):
 
 ```text
---password="{{inputPassword}}" {{data}} {{output}}
+--password-file={{inputPassword}} {{data}} {{output}}
 ```
 
 Apply qpdf stream/object normalization flags:
