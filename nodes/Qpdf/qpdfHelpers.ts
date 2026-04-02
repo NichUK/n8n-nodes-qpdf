@@ -1,5 +1,10 @@
 import { basename } from 'node:path';
 
+export interface QpdfMetadataInput {
+	pdf_metadata?: Record<string, string | number | boolean | null>;
+	xmp_metadata?: string;
+}
+
 export function sanitizeFileName(fileName: string | undefined, fallback: string): string {
 	const raw = fileName && fileName.trim() ? fileName : fallback;
 	return basename(raw).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
@@ -87,4 +92,44 @@ export function normalizePageSpec(pageSpec: string): string {
 		.replace(/\s*-\s*/g, '-')
 		.replace(/\s*,\s*/g, ',')
 		.replace(/\s+/g, ' ');
+}
+
+export function parseMetadataInput(metadataJson: string): QpdfMetadataInput {
+	let parsed: unknown;
+
+	try {
+		parsed = JSON.parse(metadataJson);
+	} catch (error) {
+		throw new Error(
+			`Metadata JSON is not valid JSON: ${error instanceof Error ? error.message : 'unknown error'}`,
+		);
+	}
+
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		throw new Error('Metadata JSON must be an object.');
+	}
+
+	const metadata = parsed as QpdfMetadataInput;
+
+	if (
+		metadata.pdf_metadata !== undefined &&
+		(!metadata.pdf_metadata ||
+			typeof metadata.pdf_metadata !== 'object' ||
+			Array.isArray(metadata.pdf_metadata))
+	) {
+		throw new Error('metadata.pdf_metadata must be an object when provided.');
+	}
+
+	if (
+		metadata.xmp_metadata !== undefined &&
+		typeof metadata.xmp_metadata !== 'string'
+	) {
+		throw new Error('metadata.xmp_metadata must be a string when provided.');
+	}
+
+	if (metadata.pdf_metadata === undefined && metadata.xmp_metadata === undefined) {
+		throw new Error('Metadata JSON must include pdf_metadata, xmp_metadata, or both.');
+	}
+
+	return metadata;
 }

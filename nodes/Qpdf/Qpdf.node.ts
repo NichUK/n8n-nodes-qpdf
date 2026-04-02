@@ -13,9 +13,19 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import { normalizePageSpec, resolveRawArgumentTokens, sanitizeFileName } from './qpdfHelpers';
+import {
+	normalizePageSpec,
+	parseMetadataInput,
+	resolveRawArgumentTokens,
+	sanitizeFileName,
+} from './qpdfHelpers';
 
-type QpdfOperation = 'extractPages' | 'merge' | 'rotatePages' | 'rawArguments';
+type QpdfOperation =
+	| 'extractPages'
+	| 'merge'
+	| 'rotatePages'
+	| 'rawArguments'
+	| 'setMetadata';
 
 async function runQpdf(commandArgs: string[]): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
@@ -58,6 +68,80 @@ async function runQpdf(commandArgs: string[]): Promise<void> {
 	});
 }
 
+async function runPythonScript(pythonScript: string, args: string[]): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn('python3', ['-c', pythonScript, ...args], {
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+
+		let stderr = '';
+		let stdout = '';
+
+		child.stdout.on('data', (chunk: Buffer) => {
+			stdout += chunk.toString();
+		});
+
+		child.stderr.on('data', (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
+
+		child.on('error', (error: NodeJS.ErrnoException) => {
+			if (error.code === 'ENOENT') {
+				reject(
+					new Error(
+						'python3 is not installed or not on PATH. Install python3 and pikepdf in the n8n runtime before using Set Metadata.',
+					),
+				);
+				return;
+			}
+
+			reject(error);
+		});
+
+		child.on('close', (code) => {
+			if (code === 0) {
+				resolve();
+				return;
+			}
+
+			reject(new Error((stderr || stdout || `python3 exited with code ${code}`).trim()));
+		});
+	});
+}
+
+const PYTHON_METADATA_SCRIPT = String.raw`
+import json
+import sys
+
+import pikepdf
+from pikepdf import Name
+
+input_path, output_path, metadata_path = sys.argv[1:4]
+
+with open(metadata_path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+pdf_metadata = payload.get("pdf_metadata") or {}
+xmp_metadata = payload.get("xmp_metadata")
+
+with pikepdf.Pdf.open(input_path) as pdf:
+    docinfo = pdf.docinfo
+
+    for key, value in pdf_metadata.items():
+        if value is None:
+            continue
+        pdf_key = key if str(key).startswith("/") else f"/{key}"
+        docinfo[pdf_key] = str(value)
+
+    if xmp_metadata is not None:
+        metadata_stream = pdf.make_stream(xmp_metadata.encode("utf-8"))
+        metadata_stream["/Type"] = Name("/Metadata")
+        metadata_stream["/Subtype"] = Name("/XML")
+        pdf.Root["/Metadata"] = metadata_stream
+
+    pdf.save(output_path)
+`;
+
 const properties: INodeProperties[] = [
 	{
 		displayName: 'Operation',
@@ -90,6 +174,12 @@ const properties: INodeProperties[] = [
 				description: 'Run qpdf with custom arguments using placeholders',
 				action: 'Run qpdf with raw arguments',
 			},
+			{
+				name: 'Set Metadata',
+				value: 'setMetadata',
+				description: 'Write document info metadata and optional XMP metadata',
+				action: 'Set PDF metadata',
+			},
 		],
 	},
 	{
@@ -100,7 +190,7 @@ const properties: INodeProperties[] = [
 		description: 'Name of the binary field containing the input PDF',
 		displayOptions: {
 			show: {
-				operation: ['extractPages', 'rotatePages'],
+				operation: ['extractPages', 'rotatePages', 'setMetadata'],
 			},
 		},
 	},
@@ -160,6 +250,23 @@ const properties: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				operation: ['rawArguments'],
+			},
+		},
+	},
+	{
+		displayName: 'Metadata JSON',
+		name: 'metadataJson',
+		type: 'string',
+		typeOptions: {
+			rows: 8,
+		},
+		default:
+			'{\n  "pdf_metadata": {\n    "Title": "Example Title",\n    "Creator": "n8n-nodes-qpdf"\n  },\n  "xmp_metadata": "<?xpacket begin=\\"\\ufeff\\" id=\\"W5M0MpCehiHzreSzNTczkc9d\\"?>\\n<x:xmpmeta xmlns:x=\\"adobe:ns:meta/\\"></x:xmpmeta>\\n<?xpacket end=\\"w\\"?>"\n}',
+		description:
+			'JSON object containing pdf_metadata, xmp_metadata, or both. xmp_metadata should be a full XMP packet string.',
+		displayOptions: {
+			show: {
+				operation: ['setMetadata'],
 			},
 		},
 	},
@@ -281,13 +388,20 @@ export class Qpdf implements INodeType {
 							this.getNodeParameter('pages', itemIndex) as string,
 						);
 						await runQpdf([inputPath, '--pages', inputPath, pages, '--', outputPath]);
-					} else {
+					} else if (operation === 'rotatePages') {
 						autoSuffix = 'rotated';
 						const pages = normalizePageSpec(
 							this.getNodeParameter('pages', itemIndex) as string,
 						);
 						const rotation = this.getNodeParameter('rotation', itemIndex) as string;
 						await runQpdf([inputPath, '--rotate', `${rotation}:${pages}`, '--', outputPath]);
+					} else {
+						autoSuffix = 'metadata';
+						const metadataJson = this.getNodeParameter('metadataJson', itemIndex) as string;
+						const parsedMetadata = parseMetadataInput(metadataJson);
+						const metadataPath = join(workDir, 'metadata.json');
+						await writeFile(metadataPath, JSON.stringify(parsedMetadata), 'utf8');
+						await runPythonScript(PYTHON_METADATA_SCRIPT, [inputPath, outputPath, metadataPath]);
 					}
 
 					outputBuffer = await readFile(outputPath);
