@@ -27,9 +27,13 @@ type QpdfOperation =
 	| 'rawArguments'
 	| 'setMetadata';
 
-async function runQpdf(commandArgs: string[]): Promise<void> {
+async function runProcess(
+	executable: string,
+	args: string[],
+	notFoundMessage: string,
+): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
-		const child = spawn('qpdf', commandArgs, {
+		const child = spawn(executable, args, {
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 
@@ -46,11 +50,7 @@ async function runQpdf(commandArgs: string[]): Promise<void> {
 
 		child.on('error', (error: NodeJS.ErrnoException) => {
 			if (error.code === 'ENOENT') {
-				reject(
-					new Error(
-						'qpdf is not installed or not on PATH. Install qpdf in the n8n runtime before using this node.',
-					),
-				);
+				reject(new Error(notFoundMessage));
 				return;
 			}
 
@@ -63,50 +63,27 @@ async function runQpdf(commandArgs: string[]): Promise<void> {
 				return;
 			}
 
-			reject(new Error((stderr || stdout || `qpdf exited with code ${code}`).trim()));
+			reject(
+				new Error((stderr || stdout || `${executable} exited with code ${code}`).trim()),
+			);
 		});
 	});
 }
 
+async function runQpdf(commandArgs: string[]): Promise<void> {
+	await runProcess(
+		'qpdf',
+		commandArgs,
+		'qpdf is not installed or not on PATH. Install qpdf in the n8n runtime before using this node.',
+	);
+}
+
 async function runPythonScript(pythonScript: string, args: string[]): Promise<void> {
-	await new Promise<void>((resolve, reject) => {
-		const child = spawn('python3', ['-c', pythonScript, ...args], {
-			stdio: ['ignore', 'pipe', 'pipe'],
-		});
-
-		let stderr = '';
-		let stdout = '';
-
-		child.stdout.on('data', (chunk: Buffer) => {
-			stdout += chunk.toString();
-		});
-
-		child.stderr.on('data', (chunk: Buffer) => {
-			stderr += chunk.toString();
-		});
-
-		child.on('error', (error: NodeJS.ErrnoException) => {
-			if (error.code === 'ENOENT') {
-				reject(
-					new Error(
-						'python3 is not installed or not on PATH. Install python3 and pikepdf in the n8n runtime before using Set Metadata.',
-					),
-				);
-				return;
-			}
-
-			reject(error);
-		});
-
-		child.on('close', (code) => {
-			if (code === 0) {
-				resolve();
-				return;
-			}
-
-			reject(new Error((stderr || stdout || `python3 exited with code ${code}`).trim()));
-		});
-	});
+	await runProcess(
+		'python3',
+		['-c', pythonScript, ...args],
+		'python3 is not installed or not on PATH. Install python3 and pikepdf in the n8n runtime before using Set Metadata.',
+	);
 }
 
 const PYTHON_METADATA_SCRIPT = String.raw`

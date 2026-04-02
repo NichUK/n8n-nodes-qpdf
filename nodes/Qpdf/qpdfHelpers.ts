@@ -7,7 +7,7 @@ export interface QpdfMetadataInput {
 
 export function sanitizeFileName(fileName: string | undefined, fallback: string): string {
 	const raw = fileName && fileName.trim() ? fileName : fallback;
-	return basename(raw).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+	return basename(raw.replace(/\\/g, '/')).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
 }
 
 export function tokenizeArguments(argumentString: string): string[] {
@@ -77,7 +77,7 @@ export function resolveRawArgumentTokens(
 			const key = placeholder.trim();
 			const value = placeholderMap.get(key);
 
-			if (!value) {
+			if (value === undefined) {
 				throw new Error(`Unknown raw argument placeholder: ${key}`);
 			}
 
